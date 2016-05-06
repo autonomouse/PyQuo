@@ -26,6 +26,7 @@ def generate_pages(properties):
     directory = properties.get('source_directory', 'markdown')
     css = properties.get('css')
     entries_to_show = properties.get('entries_to_show', 10)
+    parser = properties.get('beautiful_soup_parser', 'lxml')
 
     all_pages = []
     categories = []
@@ -40,7 +41,7 @@ def generate_pages(properties):
                 md = markdown.Markdown(extensions=['markdown.extensions.meta'])
                 markdown_text = input_file.read()
                 html = md.convert(markdown_text)
-                text = ''.join(BeautifulSoup(html).findAll(text=True))
+                text = ''.join(BeautifulSoup(html, parser).findAll(text=True))
             if md.Meta == {}:
                 continue
 
@@ -340,6 +341,10 @@ def main():
     print("{}: Generating pages".format(time_now))
     properties = get_properties("properties.json")
     generate_pages(properties=properties)
+
+    # TODO: Include the ability to selectively publish or exclude certain
+    # categories, i.e. ./scripts/generate_website.py --only=Blog
+    # or ./scripts/generate_website.py --exclude=Work, Personal
 
 
 if __name__ == "__main__":
