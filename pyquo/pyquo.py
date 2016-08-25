@@ -356,19 +356,18 @@ def create_entry(folder, timestamp=None, title=None, filename=None,
     meta = meta.format(title=title, name=name, date=timestamp, tags=tags,
                        header_image=header_image, categories=categories,
                        publish_bool=publish_bool)
-
     with open(filepath, 'w') as op:
         op.write(meta)
         op.write(content)
-
     return filepath
 
 def edit(path_to_file):
-    text_editor = utils.get_properties().get('text_editor', None)
-    if text_editor is None:
-        raise Exception("No text_editor set in properties file: {}"
-                        .format(utils.DEFAULT_PROPERTIES_FILE))
-    Popen([text_editor, path_to_file])
+    texteditor = utils.get_properties().get('text_editor', None)
+    if texteditor is None:
+        print("No texteditor set in properties file: {}\nRun '{} {}' manually"
+              .format(utils.DEFAULT_PROPERTIES_FILE, texteditor, path_to_file))
+    else:
+        Popen([texteditor, path_to_file])
 
 def new(categories):
     """Create a new entry"""
