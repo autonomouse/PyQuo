@@ -5,16 +5,19 @@ import re
 import sys
 import json
 import arrow
+import argparse
 import markdown
 import unicodedata
-from collections import namedtuple
+from pyquo import utils
+from pprint import pprint
+from subprocess import Popen
+from datetime import datetime
 from bs4 import BeautifulSoup
+from collections import namedtuple
 
-
-def get_properties(properties_file="properties.json"):
-    if os.path.exists(properties_file):
-        with open(properties_file) as f:
-            return json.loads(f.read())
+EPILOG = """
+Set properties in {}
+""".format(utils.DEFAULT_PROPERTIES_FILE)
 
 
 def generate_pages(properties):
@@ -24,6 +27,7 @@ def generate_pages(properties):
     site_title = properties.get('site_title', 'PyQuo')
     ts_frmt = properties.get('timestamp_format', 'dddd DD MMMM, YYYY')
     directory = properties.get('source_directory', 'markdown')
+    media_directory = properties.get('media_directory', 'media')
     css = properties.get('css')
     entries_to_show = properties.get('entries_to_show', 10)
     parser = properties.get('beautiful_soup_parser', 'lxml')
@@ -47,7 +51,7 @@ def generate_pages(properties):
 
             meta = namedtuple('meta', [])
             meta.title = md.Meta['title'][0]
-            meta.slug = slugify(meta.title)
+            meta.slug = utils.slugify(meta.title)
             meta.categories = [
                 category for category in set([cat.replace(" ", "").lower()
                 for cat in md.Meta['category'][0].split(',')])]
@@ -270,7 +274,7 @@ def generate_static_page(site_title, homepage, searchpage, meta, css, ts_frmt,
                          proj_root, media_dir="../media"):
     for cat in meta.categories:
         category = cat.lower()
-        create_dir_if_absent(category)
+        utils.mkdir(category)
 
         with open(os.path.join(category, meta.slug) + '.html', 'w') as op_file:
             print('<html>', file=op_file)
@@ -318,34 +322,120 @@ def generate_static_page(site_title, homepage, searchpage, meta, css, ts_frmt,
                 print('<p></p>', file=op_file)
             print('</html>', file=op_file)
 
+def create_entry(folder, timestamp=None, title=None, filename=None,
+                 categories='', name='', tags='', header_image='',
+                 publish_bool='True', content=''):
 
-def slugify(value):
-    """
-    Converts to lowercase, removes non-word characters (alphanumerics and
-    underscores) and converts spaces to hyphens. Also strips leading and
-    trailing whitespace.
-    """
-    normalized_value = unicodedata.normalize(
-        'NFKD', value).encode('ascii', 'ignore').decode('ascii')
-    stripped_value = re.sub('[^\w\s-]', '', normalized_value).strip().lower()
-    return re.sub('[-\s]+', '-', stripped_value)
-
-
-def create_dir_if_absent(folder):
-    if not os.path.exists(folder):
+    if type(categories) == list:
+        categories = ", ".join([category.title() for category in categories])
+    try:
         os.makedirs(folder)
+    except:
+        pass
 
+    if timestamp is None:
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+    if title is None:
+        title = \
+            datetime.strptime(timestamp, "%Y-%m-%d").strftime("%A %d %B, %Y")
+    if filename is None:
+        filepath = os.path.join(folder, title + '.md')
+    else:
+        filepath = os.path.join(folder, filename + '.md')
+    if os.path.exists(filepath):
+        return filepath
 
-def main():
-    time_now = arrow.now().strftime('%d-%b-%y %H:%M:%S')
-    print("{}: Generating pages".format(time_now))
-    properties = get_properties("properties.json")
-    generate_pages(properties=properties)
+    meta =  "Title:          {title}\n"
+    meta += "Authors:        {name}\n"
+    meta += "Date:           {date}\n"
+    meta += "Tags:           {tags}\n"
+    meta += "HeaderImage:    {header_image}\n"
+    meta += "Category:       {categories}\n"
+    meta += "Publish:        {publish_bool}\n"
+    meta += "\n\n"
+    meta = meta.format(title=title, name=name, date=timestamp, tags=tags,
+                       header_image=header_image, categories=categories,
+                       publish_bool=publish_bool)
 
+    with open(filepath, 'w') as op:
+        op.write(meta)
+        op.write(content)
+
+    return filepath
+
+def edit(path_to_file):
+    text_editor = utils.get_properties().get('text_editor', None)
+    if text_editor is None:
+        raise Exception("No text_editor set in properties file: {}"
+                        .format(utils.DEFAULT_PROPERTIES_FILE))
+    Popen([text_editor, path_to_file])
+
+def new(categories):
+    """Create a new entry"""
+    output_directory = utils.get_properties().get('output_directory', '.')
+    source_directory = utils.get_properties().get('source_directory', None)
+    media_directory = utils.get_properties().get('media_directory', None)
+    author = utils.get_properties().get('default_author', None)
+    cats = "_".join([category.lower() for category in categories])
+    filename = cats + '_' + datetime.now().strftime("%Y-%m-%d")
+    path_to_file = create_entry(source_directory, filename=filename,
+                                categories=categories, name=author)
+    edit(path_to_file)
+
+def make(categories):
+    """Generate website"""
+    # TODO: pass in category arg so only builds for one or more categories
     # TODO: Include the ability to selectively publish or exclude certain
     # categories, i.e. ./scripts/generate_website.py --only=Blog
     # or ./scripts/generate_website.py --exclude=Work, Personal
+    if categories:
+        raise NotImplementedError(
+            "Generating only selected categories is not implemented yet!")
+    time_now = arrow.now().strftime('%d-%b-%y %H:%M:%S')
+    print("{}: Generating pages".format(time_now))
+    properties = utils.get_properties()
+    generate_pages(properties=properties)
 
+def view():
+    """Open locally generated html in browser"""
+    browser = utils.get_properties().get('default_browser', None)
+    output_directory = utils.get_properties().get('output_directory', None)
+    Popen([browser, output_directory + "index.html"])
+
+def properties():
+    """View properties"""
+    # TODO: replace this with get and set
+    print("Contents of {}:".format(utils.DEFAULT_PROPERTIES_FILE))
+    pprint(utils.get_properties())
+
+def collect_args():
+    parser = argparse.ArgumentParser(
+        epilog=EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    subparsers = parser.add_subparsers(title='commands')
+
+    new_cmd = subparsers.add_parser('new', help=new.__doc__)
+    new_cmd.add_argument(
+        'categories', nargs='*',
+        help='list of categories under which to file this entry')
+    new_cmd.set_defaults(command=new)
+
+    make_cmd = subparsers.add_parser('make', help=make.__doc__)
+    make_cmd.add_argument('categories', nargs='*',
+                          help='Selected list of categories to build')
+    make_cmd.set_defaults(command=make)
+
+    view_cmd = subparsers.add_parser('view', help=view.__doc__)
+    view_cmd.set_defaults(command=view)
+
+    prop_cmd = subparsers.add_parser('properties', help=properties.__doc__)
+    prop_cmd.set_defaults(command=properties)
+
+    return parser
+
+def main():
+    command, args = utils.parse_args(collect_args())
+    command(**args)
 
 if __name__ == "__main__":
     sys.exit(main())

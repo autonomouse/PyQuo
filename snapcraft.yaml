@@ -1,0 +1,21 @@
+name: pyquo
+version: 0.0.1
+summary: HTML generator
+description: HTML generator. Work in progress.
+confinement: strict
+
+apps:
+  pyquo:
+    command: pyquo
+    plugs: [home]
+
+parts:
+  pyquo:
+    source: .
+    plugin: python3
+    stage-packages:
+      - python3-arrow
+      - python3-bs4
+      - python3-markdown
+      - python3-simplejson
+      - python3-dateutil
